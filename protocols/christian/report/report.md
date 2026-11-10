@@ -146,7 +146,7 @@ and full mode has a postive error, around the single-trip delay.
 
 ### Cristian's algorithm assumes the round-trip delay is symmetric; how large is the error when it is not?
 
-Assume there's no server queueing delay, it is the difference of the two trip delays, then divided by two. Assume there's server queueing, we calculate the queueing time into the sending delay. It has a guarantee of at most RTT/2 error no matter what.
+Assume there's no server queueing delay, it is the difference of the two trip delays, then divided by two. Assume there's server queueing, we calculate the queueing time into the sending delay. It has a guarantee of at most RTT/2 error as long as we have an accurate server and accurate elapsed-time measurement
 
 ### Design variant discussion
 Answered in the design variant section.
