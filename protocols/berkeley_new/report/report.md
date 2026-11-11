@@ -2,11 +2,11 @@
 
 ## Scenario A: convergence
 
-With the three clocks initially offset by 0, 750, and 1500 ms and zero drift, we ran one Sync on node-1. The coordinator computed a group mean of about 750 ms and scheduled corrections of roughly +733 ms, +0.35 ms, and −750 ms. Immediately after the round the corrections were still pending; a later read showed all three nodes at approximately 750 ms with pendingMS=0. This confirms that Berkeley converges to the average of the participating clocks, not to real time.
+With the three clocks initially offset by 0, 750, and 1500 ms and zero drift, we ran one Sync on node-1. The coordinator computed a group mean of about 750 ms and scheduled corrections of roughly +733 ms, +0.35 ms, and −750 ms. Immediately after the round the corrections were still pending; a later read showed all three nodes at approximately 750 ms with pendingMS=0. The nodes converged on the average of the participating clocks, not on real time.
 
 ![alt text](image.png)
 
-*Scenario A: the coordinator polls the group and sends `TimeService.Adjust` calls to nodes 1–3, visible as the request/return pairs in the space-time diagram.*
+*Scenario A: the coordinator polls the group and sends `TimeService.Adjust` calls to nodes 1-3, visible as the request/return pairs in the space-time diagram.*
 
 Initially:
 node1: {"timeMS":1793014376659.0457,"hostOffsetMS":0.045654296875,"driftPPM":0,"pendingMS":0}
@@ -75,11 +75,11 @@ We reset the clocks to 0/750/1500 ms and ran Sync in slew mode. The group mean w
 
 We blocked both directions between node-1 and node-3 and ran `Sync` on node-1. The `Poll` to node-3 timed out after 3 s, so the round used only node-1 and node-2: offsets 0 and about +749 ms relative to the coordinator, giving a mean of about +374 ms. Node-1 and node-2 were slewed toward about +375 ms, while node-3 stayed at about +1500 ms; `Sync` returned `1 of 3 adjustments were not confirmed` and the round ended in `partial_failure`.
 
-After healing the link and running `Sync` again, all three clocks were sampled (offsets 0, about +2, and about +1127 ms relative to the coordinator). The coordinator scheduled +376, +374, and −751 ms; after the slews, all host offsets converged to about +750 ms. This shows that a partition produces a partial round: the reachable nodes are corrected using the clocks that answered, the isolated node is skipped, and convergence resumes when the link returns. See [the JSON export](berkeley_networkfault.json).
+After healing the link and running `Sync` again, all three clocks were sampled (offsets 0, about +2, and about +1127 ms relative to the coordinator). The coordinator scheduled +376, +374, and −751 ms; after the slews, all host offsets converged to about +750 ms. The partition produced a partial round: only the clocks that answered were averaged, the isolated node was skipped, and a later round brought all three back together. See [the JSON export](berkeley_networkfault.json).
 
 ## Design variant: fixed coordinator
 
-Berkeley synchronization here has a fixed coordinator: only node-1 can run Sync. After we crashed node-1, attempts to run Sync from another node were rejected because that node is not the coordinator, and no election or failover exists. The remaining nodes cannot compute a new round, so recovery requires starting a fresh experiment. This shows that the protocol depends on an active, agreed-upon coordinator and deliberately does not solve coordinator failure. See Json file for results.
+Berkeley synchronization here has a fixed coordinator: only node-1 can run Sync. After we crashed node-1, attempts to run Sync from another node were rejected because that node is not the coordinator, and no election or failover exists. The remaining nodes cannot compute a new round, so recovery requires starting a fresh experiment. The protocol depends on an active, agreed-upon coordinator and does not solve coordinator failure. See Json file for results.
 
 ## Discussion questions
 
@@ -97,4 +97,4 @@ A negative step can make a later clock reading smaller than an earlier one, so t
 
 ### 4. What happens when the fixed coordinator crashes?
 
-`Sync` is accepted only on `node-1`; after it crashes, the other nodes reject the call and no new round is computed, so their clocks drift apart again. A failover would need agreement on a new coordinator, transfer of the round/generation state, and rejection of stale adjustments from the old coordinator. This implementation deliberately has none of those, so recovery requires a fresh experiment.
+`Sync` is accepted only on `node-1`; after it crashes, the other nodes reject the call and no new round is computed, so their clocks drift apart again. A failover would need agreement on a new coordinator, transfer of the round/generation state, and rejection of stale adjustments from the old coordinator. It has none of those, so recovery means starting a fresh experiment.

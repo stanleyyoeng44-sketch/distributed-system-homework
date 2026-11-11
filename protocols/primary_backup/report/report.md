@@ -2,17 +2,17 @@
 
 ## Scenario A: async stale reads
 
-We set Mode to async with replicationDelayMs=4000 and wrote y=1 on node-2 (the saved run also contains an earlier x=1 write; the read sequence below is for y=1 at index 2). The write came back in about 200ms with acks:0, meaning the primary applied it and answered the client without waiting for any backup. An immediate local read on node-2 returned found:false, stale:true, so the update had still not been applied yet. A primary read returned 1 in about 0.2 seconds, and a session read with minIndex=2 took about 3.7 seconds before returning 1, which is about how long the delayed update needed to reach node-2. The write has already succeeded, but node-2 still shows the old value for a few seconds. That is the result of async replication; fast writes, in exchange for reads that can be out of date.
+We set Mode to async with replicationDelayMs=4000 and wrote x=1 on node-2. The write returned in about 190ms with acks:0, so the primary had applied it and answered without waiting for a backup. An immediate local read on node-2 returned found:false, stale:true, index:0. A primary read returned 1 in about 0.2 seconds. A session read with minIndex=1 waited about 3.0 seconds and then returned 1; it started about 1 second after the write, so the value arrived roughly 4 seconds after the write. The write had already succeeded while node-2 still showed the old value. That is async replication: fast writes, but reads can be out of date.
 
 ## Scenario B: sync replication and a backup crash
 
-We set Mode to sync, so a write only replies after every backup acknowledges it. The first write went through normally: acks:4 after about 370ms, because all five nodes were up. We then crashed node-3 and wrote x=2, and the write failed after 4 seconds with missing acks from node-3. But the state, on the other hand, showed: node-1, node-2, node-4 and node-5 all had x=2, and only the crashed node-3 was still at x=1. So, a timeout does not mean the write did not happen, it means the primary could not prove that everyone got it.
+We set Mode to sync, so a write only replies after every backup acknowledges it. The first write went through normally: acks:4 after about 370ms, because all five nodes were up. We then crashed node-3 and wrote x=2, and the write failed after 4 seconds with missing acks from node-3. The state after the failure showed node-1, node-2, node-4 and node-5 with x=2; only the crashed node-3 still had x=1. The timeout meant the primary could not prove delivery, not that the write was rolled back.
 
 ## Scenario C: partition and no log repair
 
 We set sync replication and wrote `x=1`; all four backups acknowledged it. We then blocked both directions between `node-1` and `node-3` and wrote `x=2` on `node-2`. The write failed after about 4 seconds with `index 2 applied on primary but sync replication timed out; missing acks from node-3: no reply`, but the primary and the reachable backups still held `x=2`; a local read on `node-3` returned `x=1` with `stale:true`.
 
-After healing the link, we wrote `x=3`. The write returned successfully with `acks:4`, but `node-3` still had `store.x="1"`, `appliedIndex=1`, `pending=1`, and `index=3`: it had buffered index 3 because index 2 was missing, and the primary never resent index 2. A session read on `node-3` with `minIndex=3` therefore cannot satisfy its wait, because `appliedIndex=1`; with the 9 s session timeout it fails. The saved export ends just before that timeout, so its last recorded `lastGet` is still the earlier local read. This shows that sync replication acknowledges receipt, not necessarily application, and that this implementation has no log repair.
+After healing the link, we wrote `x=3`. The write returned successfully with `acks:4`, but `node-3` still had `store.x="1"`, `appliedIndex=1`, `pending=1`, and `index=3`: it had buffered index 3 because index 2 was missing, and the primary never resent index 2. A session read on `node-3` with `minIndex=3` could not satisfy its wait; it timed out after 9 s (`waitedMs=9004`) and recorded `lastGet` with mode `session`, `stale:true` and index 0. Sync replication proved receipt, not application, and the primary never repaired the missing index.
 
 State evidence after the healed write: `node-1`, `node-2`, `node-4` and `node-5` had `index=3`, `appliedIndex=3`, and `store.x="3"`; `node-3` had `index=3`, `appliedIndex=1`, `pending=1`, and `store.x="1"`. The primary's `lastWrite` reported `acks:4`.
 
@@ -44,7 +44,7 @@ We set Mode to sync, wrote x=1 to all nodes, then crashed node-1, the primary. A
 
 ### 1. Why can an async write be invisible to a local read?
 
-In async mode the primary applies the write, replies to the client immediately, and only later (after `replicationDelayMs`) sends Apply to the backups. A local read on the backup before that replication arrives reads the old store and is marked `stale` because it is a backup. The write's success means the primary accepted and applied it, not that every replica has it. This is the tradeoff in scenario A: fast writes, temporarily stale reads.
+In async mode the primary applies the write, replies to the client immediately, and only later (after `replicationDelayMs`) sends Apply to the backups. A local read on the backup before that replication arrives reads the old store and is marked `stale` because it is a backup. The write's success means the primary accepted and applied it, not that every replica has it. Scenario A trades fast writes for temporarily stale reads.
 
 ### 2. Why does a sync timeout not mean the write failed?
 
@@ -56,5 +56,5 @@ The primary applies and persists the write locally before it starts replication,
 
 ### 4. Why is a separate primary election needed?
 
-The primary is hard-coded as `node-1`; backups only forward writes and apply entries, and there is no election, lease, or log-repair protocol. If node-1 crashes, writes and primary reads fail after the forwarding timeout, and local reads on backups may be stale. A real system needs a consensus or election layer to choose a new primary and to ensure that the new primary has the latest log before accepting writes. This design deliberately stops at replication and leaves failover out of scope.
+The primary is hard-coded as `node-1`; backups only forward writes and apply entries, and there is no election, lease, or log-repair protocol. If node-1 crashes, writes and primary reads fail after the forwarding timeout, and local reads on backups may be stale. A real system needs a consensus or election layer to choose a new primary and transfer the latest log before accepting writes. Failover is out of scope here.
 

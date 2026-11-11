@@ -2,7 +2,7 @@
 
 ## Scenario A: five-node election
 
-We started a five-node run and held an election. Node-5 became coordinator because it has the highest ID, and nodes 1–4 became followers after receiving its Coordinator announcement. No lower node won, because every higher live node answered OK and took over. So, the highest live node leads.
+We started a five-node run and held an election. Node-5 became coordinator because it has the highest ID, and nodes 1-4 became followers after receiving its Coordinator announcement. No lower node won, because every higher live node answered OK and took over. The highest live node won.
 
 ![alt text](image.png)
 
@@ -10,7 +10,7 @@ We started a five-node run and held an election. Node-5 became coordinator becau
 
 ## Scenario B: coordinator crash
 
-Node-5 was coordinator, and we then crashed it. We triggered a new election from node-1, which sent election to nodes 2–5. Node-5 was dead, nodes 2–4 answered OK, and node-4, the highest live node, waited for node-5 to time out and then declared itself coordinator. All live nodes switched to node-4, while node-5 remained offline.
+Node-5 was coordinator, and we then crashed it. We triggered a new election from node-1, which sent election to nodes 2-5. Node-5 was dead, nodes 2-4 answered OK, and node-4, the highest live node, waited for node-5 to time out and then declared itself coordinator. All live nodes switched to node-4, while node-5 remained offline.
 
 ![alt text](image-1.png)
 
@@ -26,7 +26,7 @@ Node-5 was coordinator, and we then crashed it. We triggered a new election from
 
 ## Scenario C: eight-node election
 
-Using eight-node mapping, node-8 was first made coordinator by an election started from node-4. We crashed node-8 and started another election from node-4, nodes 5–7 were still alive and node-7 was the highest live node. Node-7 won after timing out the dead node-8 and broadcast coordinator to the group. This reproduces the lecture: the initiator wakes the higher nodes, and the highest survivor becomes coordinator.
+Using eight-node mapping, node-8 was first made coordinator by an election started from node-4. We crashed node-8 and started another election from node-4; nodes 5-7 were still alive and node-7 was the highest live node. Node-7 won after timing out the dead node-8 and broadcast coordinator to the group. The message flow matches the lecture example: the initiator wakes the higher nodes, and the highest survivor becomes coordinator.
 
 ![alt text](image-4.png)
 
@@ -42,7 +42,7 @@ Using eight-node mapping, node-8 was first made coordinator by an election start
 
 ## Scenario D: two more crashes
 
-With node-8 already down, we also crashed nodes 6 and 7. The remaining nodes were 1–5, so node-5 was now the highest live node. An election triggered from a lower node caused node-5 to campaign, time out the dead higher nodes, and win. All live nodes accepted node-5, so the two extra failures added timeout delay but still produced exactly one coordinator.
+With node-8 already down, we also crashed nodes 6 and 7. The remaining nodes were 1-5, so node-5 was now the highest live node. An election triggered from a lower node caused node-5 to campaign, time out the dead higher nodes, and win. All live nodes accepted node-5, so the two extra failures added timeout delay but still produced exactly one coordinator.
 
 ![alt text](image-7.png)
 
@@ -58,13 +58,13 @@ With node-8 already down, we also crashed nodes 6 and 7. The remaining nodes wer
 
 ## Scenario E: network partition
 
-We partitioned the five nodes into `{node-1, node-2, node-3}` and `{node-4, node-5}` by blocking every link between the two groups. Node-5 was coordinator before the partition. We then started an election on node-3; it could not hear node-4 or node-5, so it became coordinator for the first group, while node-5 remained coordinator for the second. The reads showed node-1 and node-2 following node-3, and node-4 following node-5 — two coordinators at the same time.
+We partitioned the five nodes into `{node-1, node-2, node-3}` and `{node-4, node-5}` by blocking every link between the two groups. Node-5 was coordinator before the partition. We then started an election on node-3; it could not hear node-4 or node-5, so it became coordinator for the first group, while node-5 remained coordinator for the second. The reads showed node-1 and node-2 following node-3, and node-4 following node-5: two coordinators at the same time.
 
 After healing all links, we started an election on node-5. It had no higher live node, so it re-announced itself as coordinator; node-3, node-1, node-2 and node-4 all accepted node-5 and became followers. Healing does not trigger a new round in this implementation; a new election (or an exchange of Coordinator messages) is needed, and until then both sides can believe they have a coordinator. See [the JSON export](bully_networkfault.json).
 
 ## Design variant: recovered highest node
 
-Node-7 was coordinator, then crashed; node-6 took over as the highest live node. We recovered node-7 and triggered a new election from node-4, and node-7, now the highest live node again, won. Node-6 stepped down and all live nodes switched back to node-7. This is reasonable for a preferred primary but can cause issues with frequent switching when the failure is only temporary slowdowns.
+Node-7 was coordinator, then crashed; node-6 took over as the highest live node. We recovered node-7 and triggered a new election from node-4, and node-7, now the highest live node again, won. Node-6 stepped down and all live nodes switched back to node-7. That behavior makes sense for a preferred primary, but it can cause frequent leader changes when the failure was only a temporary slowdown.
 
 ![alt text](image-10.png)
 
@@ -102,4 +102,4 @@ No. A slow process, an overloaded node, or a blocked link looks the same as a cr
 
 ### 4. Why does a recovered highest node take over?
 
-A recovered node starts as a follower, but a new `StartElection` lets it campaign; because it has the highest ID, no higher node answers and it wins, and the current coordinator steps down when it receives the higher Coordinator announcement. This is reasonable when IDs encode preferred capacity or administrative priority. It is disruptive when the highest node is only temporarily slow or flapping, because every recovery causes another leader change.
+A recovered node starts as a follower, but a new `StartElection` lets it campaign; because it has the highest ID, no higher node answers and it wins, and the current coordinator steps down when it receives the higher Coordinator announcement. That is useful when IDs encode capacity or administrative priority. It is disruptive when the highest node is only temporarily slow or flapping, because every recovery causes another leader change.

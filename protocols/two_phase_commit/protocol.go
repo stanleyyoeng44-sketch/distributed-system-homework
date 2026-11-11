@@ -284,9 +284,8 @@ func (c *Coordinator) transfer(args TransferArgs, reply *State) error {
 	c.log.Decision = decision
 	c.log.Phase = phaseDecided
 	if err := c.persistLocked(); err != nil {
-		// A failed decision write must never become a commit. Abort in memory
-		// and notify the prepared RMs; if this abort is not durable either,
-		// recovery after a restart will presume abort again.
+		// On a failed decision write, abort and notify the RMs. If the abort is
+		// not durable either, recovery will presume abort again.
 		saveErr := err
 		c.log.Decision = decisionAbort
 		c.log.Phase = phaseDecided
@@ -565,7 +564,7 @@ func (rm *ResourceManager) Prepare(args PrepareArgs, reply *PrepareReply) error 
 	rm.log.Txn = &rmTxn{ID: args.Txn, Delta: args.Delta, Vote: vote, State: state}
 
 	if err := rm.persistLocked(); err != nil {
-		// The vote was not made durable, so do not keep a prepared record.
+		// Restore the previous record if the vote was not saved.
 		rm.log.Txn = previous
 		return err
 	}
@@ -601,8 +600,8 @@ func (rm *ResourceManager) Commit(args DecideArgs, reply *DecideReply) error {
 	txn.State = stateCommitted
 	rm.uncertain = false
 	if err := rm.persistLocked(); err != nil {
-		// stateCommitted must imply a durable commit; otherwise the retry would
-		// acknowledge a commit that a crash could lose or apply twice.
+		// Only report committed after the save succeeds. A failed save must be
+		// retried, not acknowledged.
 		rm.log.Balance = previousBalance
 		txn.State = previousState
 		rm.uncertain = previousUncertain
@@ -625,8 +624,8 @@ func (rm *ResourceManager) Abort(args DecideArgs, reply *DecideReply) error {
 		return nil
 	}
 	if txn.State == stateCommitted {
-		// Never undo a committed transfer, and never report the abort as
-		// successful: that would hide a coordinator/participant disagreement.
+		// Do not undo a committed transfer. Return an error so the TM cannot
+		// record a false abort.
 		rm.lastErr = fmt.Sprintf("%s was already committed; cannot abort", args.Txn)
 		rm.reportLocked()
 		return fmt.Errorf("%s was already committed; cannot abort", args.Txn)

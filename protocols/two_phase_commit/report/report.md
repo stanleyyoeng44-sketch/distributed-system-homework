@@ -2,15 +2,11 @@
 
 ## Scenario A: normal commit
 
-We transfer 30 from node-2 to node-3. The TM sends RM.Prepare to all three RMs; node-2 (-30), node-3 (+30) and node-4 (0) all answer vote:"yes" and enter prepared, so the TM writes commit to its log and sends RM.Commit. node-2 drops to 70, node-3 rises to 130, and node-4 stays at 100, keeping the total at 300, and all four nodes record the same outcome. See [the export](2pc_scenA.json).
-
-![alt text](image.png)
-
-*Scenario A: the TM sends `RM.Commit` to all three RMs, and each returns `{"ok":true}`, completing the normal transfer.*
+We start with node-2=100 and node-3=100. Transfer 30 from node-2 to node-3: both RMs vote YES, the TM writes commit, and the balances become 70/130. Transfer 20 back from node-3 to node-2: both RMs vote YES again, and the balances become 90/110. The total stays 200, and the TM and both RMs report commit for both transactions. The space-time diagram shows Prepare, Vote(YES), Commit and Ack for each transfer. See [the export](2pc_scenA.json).
 
 ## Scenario B: insufficient-funds veto
 
-We transfer 150, which exceeds node-2's balance of 100. node-2 answers vote:"no" with reason "insufficient funds", while node-3 has already answered vote:"yes" and locked a +150 delta. The TM sees the No and writes abort, then sends RM.Abort, which releases node-3's lock and leaves both balances at 100. This demonstrates that 2PC follows the all-or-nothing rule: one resource that cannot pay forces the whole transaction to fail, unlike Paxos/Raft where a majority is enough. See [the export](2pc_scenB.json).
+We transfer 150, which exceeds node-2's balance of 100. node-2 answers vote:"no" with reason "insufficient funds", while node-3 has already answered vote:"yes" and locked a +150 delta. The TM sees the No and writes abort, then sends RM.Abort, which releases node-3's lock and leaves both balances at 100. One account could not pay, so the whole transaction aborted. A majority would have been enough for Paxos, but here every RM had to vote yes. See [the export](2pc_scenB.json).
 
 ## Scenario C: crash before decision
 
@@ -34,7 +30,7 @@ We start a transfer of 100 with pauseBeforeDecisionMs=30000; both RMs vote YES a
 
 ## Scenario D: crash after decision
 
-We start a transfer of 100 with pauseAfterDecisionMs=30000. The TM writes commit to its log but crashes before notifying anyone. The RMs are prepared (locked) during the pause, and once the crash makes their TM.Status polls fail they become uncertain, with balances unchanged. On recovery the TM re-reads its log, sees commit, and resends RM.Commit until both RMs acknowledge, moving each balance exactly once. This shows that durability at the commit point is what turns a crash from an abort into a completed transfer.
+We start a transfer of 100 with pauseAfterDecisionMs=30000. The TM writes commit to its log but crashes before notifying anyone. The RMs are prepared (locked) during the pause, and once the crash makes their TM.Status polls fail they become uncertain, with balances unchanged. On recovery the TM re-reads its log, sees commit, and resends RM.Commit until both RMs acknowledge, moving each balance exactly once. The outcome depended on whether commit was durable before the crash, not on whether an RM had already heard it.
 
 ![alt text](image-5.png)
 
@@ -56,11 +52,11 @@ We start a transfer of 100 with pauseAfterDecisionMs=30000. The TM writes commit
 
 We started a transfer of 100 from node-2 to node-3 with `pauseBeforeDecisionMs=30000`, waited until both RMs had voted YES and were prepared, and then blocked both directions between node-1 and node-3. The TM wrote commit and node-2 applied it (balance 0), but node-3 could not be reached, so its balance stayed 100 and it reported `uncertain`; the TM remained `decided` with `acks:{node-2:true}` and kept retrying the missing Commit. The platform call itself returned `context deadline exceeded` before the 30 s pause ended; the transaction continued on the nodes.
 
-After healing the link at about 32.8 s, the TM's retry reached node-3; node-3 committed (balance 200), the TM marked both acknowledgments and reached `finished`. Each balance changed exactly once. This shows that a network partition after the votes does not change the durable decision, but it can delay Commit and leave a prepared RM uncertain until the link returns. See [the JSON export](2pc_networkfault.json).
+After healing the link at about 32.8 s, the TM's retry reached node-3; node-3 committed (balance 200), the TM marked both acknowledgments and reached `finished`. Each balance changed exactly once. The decision did not change during the partition; only its delivery was delayed, and node-3 stayed uncertain until the link returned. See [the JSON export](2pc_networkfault.json).
 
 ## Design variant: missing prepared record
 
-We start a transfer of 100 with pauseAfterDecisionMs=30000 after removing the sdk.Save in RM.Prepare, so a vote:"yes" is never persisted: an RM that votes YES and then crashes restarts with no record. It keeps its old balance, while the TM has already collected all YES votes and commits, and the other RM applies the transfer. The result is two RMs that disagree about the transaction's outcome, a violation of 2PC's all-or-nothing guarantee. The TM remains in decided with acks:{node-3:true} and keeps resending RM.Commit to node-2, which keeps answering no prepared record for T1 and the transaction never finishes. This is the same lesson as Paxos "amnesia": a vote must be durable before it is sent, or recovery can contradict what was already decided.
+We start a transfer of 100 with pauseAfterDecisionMs=30000 after removing the sdk.Save in RM.Prepare, so a vote:"yes" is never persisted: an RM that votes YES and then crashes restarts with no record. It keeps its old balance, while the TM has already collected all YES votes and commits, and the other RM applies the transfer. The result is two RMs that disagree about the transaction's outcome, a violation of 2PC's all-or-nothing guarantee. The TM remains in decided with acks:{node-3:true} and keeps resending RM.Commit to node-2, which keeps answering no prepared record for T1 and the transaction never finishes. The vote has to be saved before the reply; if it is not, a crash can erase a YES that the TM already counted.
 
 For the design-variant run we removed these lines from a copy of `protocol.go`; the submitted protocol keeps them:
 
@@ -86,7 +82,7 @@ A YES vote is a durable promise: after a crash, the RM must still know which tra
 
 ### 4. Why is the log write the commit point?
 
-The TM writes `commit` to stable storage before notifying any RM. If it crashes after that write, recovery reads commit and resends it until all RMs acknowledge; if it crashes before the write, recovery finds no decision and aborts. The first Commit message may be lost or delayed, so it cannot define the outcome; the durable log record is the single point after which the decision is irrevocable. This is why scenarios C and D have opposite outcomes even though both crash the TM.
+The TM writes `commit` to stable storage before notifying any RM. If it crashes after that write, recovery reads commit and resends it until all RMs acknowledge; if it crashes before the write, recovery finds no decision and aborts. The first Commit message may be lost or delayed, so it cannot define the outcome; the durable log record is the single point after which the decision is irrevocable. Scenarios C and D differ only in whether that record existed before the crash.
 
 ### 5. Why is resending Commit safe?
 

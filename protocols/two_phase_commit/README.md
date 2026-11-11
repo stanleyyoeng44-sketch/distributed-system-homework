@@ -32,7 +32,7 @@ If the TM crashes before writing a decision, recovery writes abort (presumed abo
 
 With Docker running, start the platform with `npm start` from the repository root, create the Docker experiment described in each scenario, and run the inputs from the node panel. These runs were created manually rather than from a `scenarios.json`. The [report](report/report.md) contains the observations and screenshots.
 
-- Normal commit: four nodes, `Transfer(from=node-2, to=node-3, amount=30)`. All three RMs vote yes; `node-2` becomes 70, `node-3` 130, and `node-4` stays 100; all report commit.
+- Normal commit: three nodes, two transfers (30 from `node-2` to `node-3`, then 20 back). The balances go 70/130 then 90/110; the total stays 200, and the TM and both RMs report commit for both transactions.
 - Veto: transfer 150 from `node-2`. `node-2` votes no for insufficient funds while `node-3` has already locked a +150 delta; the TM aborts and releases the lock, and both stay at 100.
 - Crash before decision: transfer 100 with `pauseBeforeDecisionMs=30000`, then crash `node-1` while the RMs are prepared. They become uncertain and stay locked; recovery finds no decision and aborts.
 - Crash after decision: transfer 100 with `pauseAfterDecisionMs=30000`, then crash `node-1` after the commit log write. Recovery resends commit and each balance changes exactly once.

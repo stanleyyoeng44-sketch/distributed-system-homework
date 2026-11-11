@@ -18,7 +18,7 @@ We triggered acquire simultaneously on node-2 and node-3 with holdMs=2000. Both 
 
 ## Scenario B: crashed peer blocks
 
-We crashed node-3 and then called Acquire on node-2. Node-2 sent Request to nodes 1 and 3 and received node-1’s Ack, but node-3’s Ack never arrived. Node-2 stayed waiting with acksHave=1 of 2 and never entered the critical section. This shows that Lamport mutual exclusion has no failure detector or coordinator: one unrelated crashed node can block everyone forever.
+We crashed node-3 and then called Acquire on node-2. Node-2 sent Request to nodes 1 and 3 and received node-1's Ack, but node-3's Ack never arrived. Node-2 stayed waiting with acksHave=1 of 2 and never entered the critical section. One unrelated crash was enough to block the request; there is no failure detector or coordinator to remove the dead peer.
 
 ![alt text](image-3.png)
 
@@ -28,7 +28,7 @@ We crashed node-3 and then called Acquire on node-2. Node-2 sent Request to node
 
 We blocked both directions between `node-1` and `node-3`, then called `Acquire(holdMs=2000)` on `node-1`. `node-1` sent Request to `node-2` and `node-3`; the Request to `node-3` was dropped (red X), while `node-2` replied with an Ack. `node-1` stayed in `role=waiting` with `myTS=1`, `acksHave=1`, `acksNeed=2`, `entries=0`, and `messagesSent=2`; its queue contained only its own request. The platform call eventually returned `context deadline exceeded`, and its `Cancel MutexService.Request` to `node-3` was also dropped because the link was still blocked.
 
-We then healed the link, but no new Request or Ack was sent. `node-1` remained waiting with one of two Acks and never entered the critical section. This shows that Lamport mutual exclusion has no retry or failure detector: a blocked link can block the requester permanently, and healing does not replay the lost message.
+We then healed the link, but no new Request or Ack was sent. `node-1` remained waiting with one of two Acks and never entered the critical section. No retry or failure detector resends the missing message; healing the link does not replay the lost Request or Ack.
 
 ![alt text](image-4.png)
 
@@ -50,7 +50,7 @@ All nodes order requests by the same total order `(timestamp, node ID)`, and a r
 
 ### 2. Why defer an Ack while waiting?
 
-If a node that is waiting for an earlier request, or is already critical, replied immediately, it would grant permission to a later requester before the earlier request has finished. That could let the later requester enter while the earlier one is still waiting or holding the section, breaking mutual exclusion. Deferring the Ack keeps the later request blocked until the local critical section ends or the earlier request is released, so the total order is preserved. This is the same deferral idea used by Ricart-Agrawala, though this implementation also keeps an explicit queue and Release.
+If a node that is waiting for an earlier request, or is already critical, replied immediately, it would grant permission to a later requester before the earlier request has finished. That could let the later requester enter while the earlier one is still waiting or holding the section, breaking mutual exclusion. Deferring the Ack keeps the later request blocked until the local critical section ends or the earlier request is released, so the total order is preserved. Ricart-Agrawala uses the same deferral, but without the explicit queue and Release.
 
 ### 3. Why does one crashed node block everyone?
 
