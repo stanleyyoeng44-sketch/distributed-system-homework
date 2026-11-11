@@ -37,9 +37,10 @@ With Docker running, start the platform with `npm start` from the repository roo
 - Convergence: leave the default offsets 0/+750/+1500 ms, run `Sync` on `node-1`, then `Read` each node after the slews finish; all should settle near +750 ms.
 - Outlier: set `node-3` to +10000 ms with `ConfigureClock`, run `Sync` again; `node-3` is excluded from the mean (about +375 ms) but still receives a large negative correction.
 - Jump versus slew: run the same round with `SetMode(false)` and `SetMode(true)`; the jump reaches the target immediately but can move time backward.
+- Partition: block `node-1` ↔ `node-3`, run `Sync`; node-3's `Poll` times out, the round ends `partial_failure` with `1 of 3 adjustments were not confirmed`, and node-1/node-2 move to about +375 ms while node-3 stays at about +1500 ms. Heal the link and run `Sync` again; all three converge to about +750 ms.
 - Design variant: crash `node-1`; `Sync` from another node is rejected and no failover occurs.
 
-Saved exports: [slew](report/berkeley_scenarioCslew.json), [jump](report/berkeley_scenarioCjump.json), [design variant](report/berkeley_designvariant.json).
+Saved exports: [slew](report/berkeley_scenarioCslew.json), [jump](report/berkeley_scenarioCjump.json), [partition](report/berkeley_networkfault.json), [design variant](report/berkeley_designvariant.json).
 
 ## Discussion questions
 

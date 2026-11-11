@@ -33,9 +33,10 @@ With Docker running, start the platform with `npm start` from the repository roo
 - Coordinator crash: crash `node-5`, then start an election on `node-1`; `node-4` waits for `node-5` to time out and wins.
 - Eight nodes: elect `node-8`, crash it, then start an election on `node-4`; `node-7` wins.
 - Two more crashes: with `node-8`, `node-7`, and `node-6` down, an election from a lower node makes `node-5` the winner.
+- Partition: block every link between `{node-1,node-2,node-3}` and `{node-4,node-5}`, then start an election on `node-3`; node-3 becomes coordinator on its side while node-5 remains coordinator on the other, so two coordinators coexist. Heal the links and start an election on `node-5`; it re-announces itself and all nodes converge on node-5.
 - Design variant: while `node-6` is coordinator after `node-7` crashed, recover `node-7` and start an election; `node-7` takes over again and `node-6` steps down.
 
-Saved exports: [five nodes](report/bully_scenA.json), [coordinator crash](report/bully_scenB.json), [eight nodes](report/bully_scenc.json), [design variant](report/bully_designvariant.json).
+Saved exports: [five nodes](report/bully_scenA.json), [coordinator crash](report/bully_scenB.json), [eight nodes](report/bully_scenc.json), [partition](report/bully_networkfault.json), [design variant](report/bully_designvariant.json).
 
 ## Discussion questions
 

@@ -37,9 +37,9 @@ With Docker running, start the platform with `npm start` from the repository roo
 - Contention: run `Acquire(holdMs=2000)` on `node-2` and `node-3` at the same time. Both requests get timestamp 1, `node-2` wins the tie, `node-3` waits about 2.2 s, and the critical sections do not overlap.
 - Crash: crash `node-3`, then run `Acquire` on `node-2`. `node-2` receives `node-1`'s Ack but waits forever with `acksHave=1` of 2.
 - Partition: block both directions between `node-1` and `node-3`, run `Acquire` on `node-1`; `node-3`'s Request is dropped, `node-1` waits with `acksHave=1` of 2, the call times out, and healing the link does not replay the Request or Ack.
-- Design variant (message count): one acquisition in a three-node group produces 6 algorithm messages, compared with 4 for Ricart–Agrawala.
+- Design variant (message count): one acquisition in a three-node group produces 6 algorithm messages, compared with 4 for Ricart–Agrawala (measured runs: [Lamport](report/lamport_single_acquisition.json), [Ricart–Agrawala](report/ricart_agrawala_single_acquisition.json)).
 
-Saved exports: [contention](report/lamportmutex_scenA.json), [crash](report/lamportmutex_scenB.json), [partition](report/lamport_mutex_scenC.json).
+Saved exports: [contention](report/lamportmutex_scenA.json), [crash](report/lamportmutex_scenB.json), [partition](report/lamport_mutex_scenC.json), [message count (Lamport)](report/lamport_single_acquisition.json), [message count (Ricart–Agrawala)](report/ricart_agrawala_single_acquisition.json).
 
 ## Discussion questions
 

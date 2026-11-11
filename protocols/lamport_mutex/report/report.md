@@ -40,7 +40,7 @@ We then healed the link, but no new Request or Ack was sent. `node-1` remained w
 
 ## Design variant: message count
 
-In a three-node run, one acquisition sends 2 Requests, 2 Acks, and 2 Releases, for 6 algorithm messages. Ricart-Agrawala removes the explicit Release: deferred permissions are sent when the holder leaves, and that reply also releases the next requester, so it needs only 2 Requests + 2 Acks = 4. The extra Release here is the cost of keeping the explicit distributed queue and a separate release step; the current code does not switch modes, so this comparison is analytical rather than a second run.
+In a three-node run, one acquisition sends 2 Requests, 2 Acks, and 2 Releases, for 6 algorithm messages ([measured Lamport run](lamport_single_acquisition.json)). Ricart-Agrawala removes the explicit Release: deferred permissions are sent when the holder leaves, and that reply also releases the next requester, so it needs only 2 Requests + 2 Acks = 4 ([measured Ricart-Agrawala run](ricart_agrawala_single_acquisition.json)); that run records 2 Request calls and 0 Ack or Release calls. Both runs used three nodes, 80 ms latency, and a single `Acquire(holdMs=200)`. The extra Release here is the cost of keeping the explicit distributed queue and a separate release step.
 
 ## Discussion questions
 

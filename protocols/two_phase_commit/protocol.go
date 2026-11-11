@@ -167,6 +167,7 @@ func (c *Coordinator) persistLocked() error {
 		c.lastErr = err.Error()
 		return err
 	}
+	c.lastErr = ""
 	return nil
 }
 
@@ -226,6 +227,8 @@ func (c *Coordinator) transfer(args TransferArgs, reply *State) error {
 		return fmt.Errorf("from and to must be different accounts")
 	}
 
+	previousLog := c.log
+	previousAnnounced := c.announced
 	c.log.Seq++
 	c.log.Txn = fmt.Sprintf("T%d", c.log.Seq)
 	c.log.From, c.log.To, c.log.Amount = args.From, args.To, args.Amount
@@ -235,6 +238,9 @@ func (c *Coordinator) transfer(args TransferArgs, reply *State) error {
 	c.lastErr = ""
 	c.announced = false
 	if err := c.persistLocked(); err != nil {
+		// No Prepare was sent, so leave the previous transaction intact.
+		c.log = previousLog
+		c.announced = previousAnnounced
 		c.mu.Unlock()
 		return err
 	}
@@ -278,10 +284,21 @@ func (c *Coordinator) transfer(args TransferArgs, reply *State) error {
 	c.log.Decision = decision
 	c.log.Phase = phaseDecided
 	if err := c.persistLocked(); err != nil {
-		c.log.Decision = decisionNone
-		c.log.Phase = phasePreparing
+		// A failed decision write must never become a commit. Abort in memory
+		// and notify the prepared RMs; if this abort is not durable either,
+		// recovery after a restart will presume abort again.
+		saveErr := err
+		c.log.Decision = decisionAbort
+		c.log.Phase = phaseDecided
+		c.log.Reason = "presumed abort: the decision could not be written to the log"
+		if abortErr := c.persistLocked(); abortErr != nil {
+			c.lastErr = fmt.Sprintf("%v; abort was not persisted either: %v", saveErr, abortErr)
+		}
+		c.announced = true
+		c.reportLocked()
 		c.mu.Unlock()
-		return fmt.Errorf("decision was not written to the log, so nothing was committed: %w", err)
+		go c.deliver(txnID)
+		return fmt.Errorf("decision was not written to the log; aborting instead: %w", saveErr)
 	}
 	c.reportLocked()
 	c.mu.Unlock()
@@ -490,6 +507,7 @@ func (rm *ResourceManager) persistLocked() error {
 		rm.lastErr = err.Error()
 		return err
 	}
+	rm.lastErr = ""
 	return nil
 }
 
@@ -543,9 +561,12 @@ func (rm *ResourceManager) Prepare(args PrepareArgs, reply *PrepareReply) error 
 	if vote == voteNo {
 		state = stateAborted
 	}
+	previous := rm.log.Txn
 	rm.log.Txn = &rmTxn{ID: args.Txn, Delta: args.Delta, Vote: vote, State: state}
 
 	if err := rm.persistLocked(); err != nil {
+		// The vote was not made durable, so do not keep a prepared record.
+		rm.log.Txn = previous
 		return err
 	}
 
@@ -575,10 +596,16 @@ func (rm *ResourceManager) Commit(args DecideArgs, reply *DecideReply) error {
 	if txn.State == stateAborted {
 		return fmt.Errorf("%s was already aborted", args.Txn)
 	}
+	previousBalance, previousState, previousUncertain := rm.log.Balance, txn.State, rm.uncertain
 	rm.log.Balance += txn.Delta
 	txn.State = stateCommitted
 	rm.uncertain = false
 	if err := rm.persistLocked(); err != nil {
+		// stateCommitted must imply a durable commit; otherwise the retry would
+		// acknowledge a commit that a crash could lose or apply twice.
+		rm.log.Balance = previousBalance
+		txn.State = previousState
+		rm.uncertain = previousUncertain
 		return err
 	}
 	rm.reportLocked()
@@ -598,12 +625,18 @@ func (rm *ResourceManager) Abort(args DecideArgs, reply *DecideReply) error {
 		return nil
 	}
 	if txn.State == stateCommitted {
-		reply.OK = true // never undo a committed transfer
-		return nil
+		// Never undo a committed transfer, and never report the abort as
+		// successful: that would hide a coordinator/participant disagreement.
+		rm.lastErr = fmt.Sprintf("%s was already committed; cannot abort", args.Txn)
+		rm.reportLocked()
+		return fmt.Errorf("%s was already committed; cannot abort", args.Txn)
 	}
+	previousState, previousUncertain := txn.State, rm.uncertain
 	txn.State = stateAborted
 	rm.uncertain = false
 	if err := rm.persistLocked(); err != nil {
+		txn.State = previousState
+		rm.uncertain = previousUncertain
 		return err
 	}
 	rm.reportLocked()
@@ -638,17 +671,32 @@ func (rm *ResourceManager) monitor(id string) {
 				rm.reportLocked()
 			}
 		case reply.Found && reply.Decision == decisionCommit:
+			previousBalance, previousState, previousUncertain := rm.log.Balance, txn.State, rm.uncertain
 			rm.log.Balance += txn.Delta
 			txn.State = stateCommitted
 			rm.uncertain = false
-			_ = rm.persistLocked()
+			if err := rm.persistLocked(); err != nil {
+				// Keep the prepared record and retry on the next poll. A commit
+				// is only reported as committed after the save succeeds.
+				rm.log.Balance = previousBalance
+				txn.State = previousState
+				rm.uncertain = previousUncertain
+				rm.reportLocked()
+				break
+			}
 			rm.reportLocked()
 			rm.mu.Unlock()
 			return
 		case reply.Found && reply.Decision == decisionAbort:
+			previousState, previousUncertain := txn.State, rm.uncertain
 			txn.State = stateAborted
 			rm.uncertain = false
-			_ = rm.persistLocked()
+			if err := rm.persistLocked(); err != nil {
+				txn.State = previousState
+				rm.uncertain = previousUncertain
+				rm.reportLocked()
+				break
+			}
 			rm.reportLocked()
 			rm.mu.Unlock()
 			return

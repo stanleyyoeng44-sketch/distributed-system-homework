@@ -56,6 +56,12 @@ With node-8 already down, we also crashed nodes 6 and 7. The remaining nodes wer
 
 *Scenario D: obsolete `Election` calls are cancelled after the election resolves.*
 
+## Scenario E: network partition
+
+We partitioned the five nodes into `{node-1, node-2, node-3}` and `{node-4, node-5}` by blocking every link between the two groups. Node-5 was coordinator before the partition. We then started an election on node-3; it could not hear node-4 or node-5, so it became coordinator for the first group, while node-5 remained coordinator for the second. The reads showed node-1 and node-2 following node-3, and node-4 following node-5 — two coordinators at the same time.
+
+After healing all links, we started an election on node-5. It had no higher live node, so it re-announced itself as coordinator; node-3, node-1, node-2 and node-4 all accepted node-5 and became followers. Healing does not trigger a new round in this implementation; a new election (or an exchange of Coordinator messages) is needed, and until then both sides can believe they have a coordinator. See [the JSON export](bully_networkfault.json).
+
 ## Design variant: recovered highest node
 
 Node-7 was coordinator, then crashed; node-6 took over as the highest live node. We recovered node-7 and triggered a new election from node-4, and node-7, now the highest live node again, won. Node-6 stepped down and all live nodes switched back to node-7. This is reasonable for a preferred primary but can cause issues with frequent switching when the failure is only temporary slowdowns.

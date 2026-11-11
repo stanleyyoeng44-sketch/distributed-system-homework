@@ -27,15 +27,15 @@ There is no `Read` input; state is published after each operation. A `sync` writ
 - `pending`: entries buffered because an earlier index is missing.
 - `lastWrite`: key, value, index, replication mode, acknowledgments, and any error.
 - `lastGet`: key, value, found, mode, index, `stale`, and `waitedMs`.
-- `lastError`: latest replication, forwarding, or session-read error.
+- `lastError`: latest replication or write-forwarding error; read failures are reflected in `lastGet`.
 
 ## Experiments
 
 With Docker running, start the platform with `npm start` from the repository root, create a five-node Docker experiment, and run the inputs from the node panel. These runs were created manually rather than from a `scenarios.json`. The [report](report/report.md) contains the observations.
 
-- Async stale reads: run `Mode(async, replicationDelayMs=4000)`, then `Put(x,1)` on `node-2`. The write returns immediately with `acks:0`; an immediate local read on `node-2` returns `found:false, stale:true`; a primary read returns 1; a session read with `minIndex=1` waits about 3.7 s.
+- Async stale reads: run `Mode(async, replicationDelayMs=4000)`, then `Put(y,1)` on `node-2` (the saved run also contains an earlier `x=1` write; the reads below are for `y=1` at index 2). The write returns immediately with `acks:0`; an immediate local read on `node-2` returns `found:false, stale:true`; a primary read returns 1; a session read with `minIndex=2` waits about 3.7 s.
 - Sync and a backup crash: run `Mode(sync)` and write `x=1` (4 acks); crash `node-3`, then write `x=2`. The write fails after 4 s with a missing ack, but `x=2` is on the primary and the live backups.
-- Partition and no log repair: run `Mode(sync)` and write `x=1`; block `node-1` ↔ `node-3`, then write `x=2`. The write fails after 4 s with a missing ack from `node-3`, but `x=2` is on the primary and the live backups; a local read on `node-3` returns `x=1, stale:true`. Heal the link and write `x=3`: the write returns `acks:4`, but `node-3` has `index=3`, `appliedIndex=1`, `pending=1`, and still reads `x=1`; a session read with `minIndex=3` times out.
+- Partition and no log repair: run `Mode(sync)` and write `x=1`; block `node-1` ↔ `node-3`, then write `x=2`. The write fails after 4 s with a missing ack from `node-3`, but `x=2` is on the primary and the live backups; a local read on `node-3` returns `x=1, stale:true`. Heal the link and write `x=3`: the write returns `acks:4`, but `node-3` has `index=3`, `appliedIndex=1`, `pending=1`, and still reads `x=1`; a session read with `minIndex=3` waits 9 s and times out (the saved export ends just before that result).
 - Design variant: crash `node-1`. Writes and primary reads sent to `node-2` wait 10 s and fail; only local reads work, and no backup takes over.
 
 Saved exports: [async](report/primary_back_scenA.json), [sync and crash](report/primary_back_scenB.json), [partition](report/primary_backup_scenC.json), [design variant](report/primary_back_designvariant.json).

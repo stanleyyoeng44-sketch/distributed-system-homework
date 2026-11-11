@@ -34,11 +34,12 @@ With Docker running, start the platform with `npm start` from the repository roo
 
 - Normal commit: four nodes, `Transfer(from=node-2, to=node-3, amount=30)`. All three RMs vote yes; `node-2` becomes 70, `node-3` 130, and `node-4` stays 100; all report commit.
 - Veto: transfer 150 from `node-2`. `node-2` votes no for insufficient funds while `node-3` has already locked a +150 delta; the TM aborts and releases the lock, and both stay at 100.
-- Crash before decision: set `pauseBeforeDecisionMs=30000`, then crash `node-1` while the RMs are prepared. They become uncertain and stay locked; recovery finds no decision and aborts.
-- Crash after decision: set `pauseAfterDecisionMs=30000`, then crash `node-1` after the commit log write. Recovery resends commit and each balance changes exactly once.
-- Design variant: remove the save in `RM.Prepare`; a yes-voting RM that crashes loses its prepared record while the TM commits and the other RM applies. The transaction never finishes.
+- Crash before decision: transfer 100 with `pauseBeforeDecisionMs=30000`, then crash `node-1` while the RMs are prepared. They become uncertain and stay locked; recovery finds no decision and aborts.
+- Crash after decision: transfer 100 with `pauseAfterDecisionMs=30000`, then crash `node-1` after the commit log write. Recovery resends commit and each balance changes exactly once.
+- Partition during commit: transfer 100 with `pauseBeforeDecisionMs=30000`; wait for both RMs to be prepared, then block `node-1` ↔ `node-3`. The TM commits and node-2 applies, but node-3 stays `uncertain` with balance 100 while the TM retries the missing Commit; the Transfer call hits the 10 s platform deadline. Heal the link; the retry reaches node-3, balances become 0/200, and the TM finishes.
+- Design variant: transfer 100 with `pauseAfterDecisionMs=30000` after removing the save in `RM.Prepare`; a yes-voting RM that crashes loses its prepared record while the TM commits and the other RM applies. node-2 stays at 100, node-3 reaches 200, and the transaction never finishes.
 
-Saved exports: [normal](report/2pc_scenA.json), [veto](report/2pc_scenB.json), [crash before decision](report/2pc_scenC.json), [crash after decision](report/2pc_scenD.json), [design variant](report/2pc_designVariant.json).
+Saved exports: [normal](report/2pc_scenA.json), [veto](report/2pc_scenB.json), [crash before decision](report/2pc_scenC.json), [crash after decision](report/2pc_scenD.json), [partition](report/2pc_networkfault.json), [design variant](report/2pc_designVariant.json).
 
 ## Discussion questions
 

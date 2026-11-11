@@ -4,3 +4,7 @@ node_modules/
 .DS_Store
 artifacts/
 **/vendor/
+
+# Compiled protocol binaries are build artifacts, not source.
+/protocols/bully_election/bully_election
+/protocols/lamport_mutex/lamport_mutex

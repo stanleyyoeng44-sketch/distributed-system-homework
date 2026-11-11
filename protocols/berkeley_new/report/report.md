@@ -71,6 +71,12 @@ node3:
 
 We reset the clocks to 0/750/1500 ms and ran Sync in slew mode. The group mean was about 749.5 ms, and the corrections (+749.5/+0.1/−749.7 ms) were applied gradually: at 3s node-1 was at 325.7 ms and node-3 at 1184.0 ms, and at 10s all clocks had settled at about 750 ms with slewMsLeft=0. In jump mode the same mean and deltas were applied instantly, so node-3 jumped from 1500 to 750 ms in one step and slewMsLeft was immediately 0. The final state is identical, but the jump moves time backward and violates monotonicity, while slewing keeps the clock strictly increasing. Results can be seen in json files.
 
+## Scenario D: network partition (partial round)
+
+We blocked both directions between node-1 and node-3 and ran `Sync` on node-1. The `Poll` to node-3 timed out after 3 s, so the round used only node-1 and node-2: offsets 0 and about +749 ms relative to the coordinator, giving a mean of about +374 ms. Node-1 and node-2 were slewed toward about +375 ms, while node-3 stayed at about +1500 ms; `Sync` returned `1 of 3 adjustments were not confirmed` and the round ended in `partial_failure`.
+
+After healing the link and running `Sync` again, all three clocks were sampled (offsets 0, about +2, and about +1127 ms relative to the coordinator). The coordinator scheduled +376, +374, and −751 ms; after the slews, all host offsets converged to about +750 ms. This shows that a partition produces a partial round: the reachable nodes are corrected using the clocks that answered, the isolated node is skipped, and convergence resumes when the link returns. See [the JSON export](berkeley_networkfault.json).
+
 ## Design variant: fixed coordinator
 
 Berkeley synchronization here has a fixed coordinator: only node-1 can run Sync. After we crashed node-1, attempts to run Sync from another node were rejected because that node is not the coordinator, and no election or failover exists. The remaining nodes cannot compute a new round, so recovery requires starting a fresh experiment. This shows that the protocol depends on an active, agreed-upon coordinator and deliberately does not solve coordinator failure. See Json file for results.
