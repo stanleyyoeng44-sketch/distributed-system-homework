@@ -34,19 +34,21 @@ const (
 
 // ElectionService runs an election only when StartElection is invoked.
 type ElectionService struct {
-	mu            sync.Mutex
-	id            string
-	priority      int
-	members       []string
-	peers         map[string]*rpc.Client
-	report        func(any) error
-	role          string
-	coordinator   string
-	electionRound uint64
-	won           int
-	backedDown    int
-	sent          uint64
-	lastErr       string
+	mu              sync.Mutex
+	id              string
+	priority        int
+	members         []string
+	peers           map[string]*rpc.Client
+	report          func(any) error
+	role            string
+	coordinator     string
+	term            uint64
+	coordinatorTerm uint64
+	electionRound   uint64
+	won             int
+	backedDown      int
+	sent            uint64
+	lastErr         string
 }
 
 type Application struct{ service *ElectionService }

@@ -54,7 +54,7 @@ With node-8 already down, we also crashed nodes 6 and 7. The remaining nodes wer
 
 ![alt text](image-9.png)
 
-*Scenario D: obsolete `Election` calls are cancelled after the election resolves.*
+*Scenario D: stale election campaigns are cancelled after the election resolves.*
 
 ## Scenario E: network partition
 
@@ -98,7 +98,7 @@ If many nodes campaign at once, each sends Election to all higher nodes, and tho
 
 ### 3. Can a timeout prove that a node crashed?
 
-No. A slow process, an overloaded node, or a blocked link looks the same as a crash to a timeout, so the algorithm treats silence as suspicion rather than proof. A partition can therefore let each side elect its own coordinator, because neither side can hear the other's higher IDs. Healing alone does not reconcile them; a new election or Coordinator exchange is needed, and there is no quorum or fencing token to prevent two leaders.
+No. A slow process, an overloaded node, or a blocked link looks the same as a crash to a timeout, so the algorithm treats silence as suspicion rather than proof. A partition can therefore let each side elect its own coordinator, because neither side can hear the other's higher IDs. Healing alone does not reconcile them; a new election or Coordinator exchange is needed, and there is no quorum or fencing token to prevent two leaders. Election and Coordinator messages carry a term. A node ignores an announcement from an older term, or a lower-priority coordinator from the same term, so a delayed old announcement cannot replace a newer one. Two live coordinators in a partition are still possible.
 
 ### 4. Why does a recovered highest node take over?
 

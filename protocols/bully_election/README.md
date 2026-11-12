@@ -6,9 +6,11 @@ An election protocol that chooses the live node with the highest numeric ID as c
 
 [main.go](main.go) sets up the node priority and services. [protocol.go](protocol.go) implements Election, OK replies, Coordinator announcements, and the application inputs. The numeric suffix of the node ID is the priority, so `node-10` outranks `node-2`.
 
-`StartElection` makes the caller a candidate and sends Election to every higher-ID member concurrently, with a 3 s call deadline. A higher node replies OK and, unless it is already a candidate or coordinator, starts its own campaign; a coordinator re-announces itself. If at least one OK arrives, the caller becomes a follower and leaves the round. If no higher node answers, the caller becomes coordinator and broadcasts Coordinator to every member. A candidate that receives a higher Coordinator announcement stands down; a node that receives a lower announcement starts a new election, or answers with its own announcement if it is the coordinator.
+`StartElection` makes the caller a candidate and sends Election to every higher-ID member concurrently, with a 3 s call deadline. A higher node replies OK and, unless it is already a candidate or coordinator, starts its own campaign; a coordinator re-announces itself. If at least one OK arrives, the caller becomes a follower and leaves the round. If no higher node answers, the caller becomes coordinator and broadcasts Coordinator to every member. A candidate that receives a higher Coordinator announcement stands down. A lower announcement is ignored if it is stale; if it comes from a lower node with a newer term, the receiver starts a new election, or re-announces itself if it is the coordinator.
 
 Failed calls are treated as dead nodes. There is no automatic failure detector, heartbeat, or startup election: a crash is noticed only when someone starts a new round. A recovered node starts as a follower with no coordinator. Membership is fixed, and election state is in memory. A partition can leave two coordinators; a later election or Coordinator exchange reconciles them only if messages flow again.
+
+Election and Coordinator messages carry a term. A node ignores a coordinator from an older term, or a lower-priority coordinator from the same term, so a delayed old announcement cannot replace a newer one. The term does not prevent two coordinators during a partition; it only rejects stale announcements after a newer election has run.
 
 ## Inputs
 
@@ -20,6 +22,7 @@ Failed calls are treated as dead nodes. There is no automatic failure detector, 
 - `role`: `follower`, `candidate`, or `coordinator`.
 - `id`: numeric election priority parsed from the node ID.
 - `coordinator`: locally recognized coordinator, empty before the first election.
+- `term`, `coordinatorTerm`: latest election term seen and the term of the current coordinator.
 - `electionRound`: local generation used to discard an obsolete campaign; not a global term.
 - `electionsWon`, `backedDown`: local victories and withdrawals.
 - `sent`: Election and Coordinator calls attempted, including failed calls; replies are excluded.
