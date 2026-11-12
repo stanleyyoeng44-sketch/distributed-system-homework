@@ -12,6 +12,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveValues } from './scenario-values.mjs';
 
 const base = process.env.DISTVIS_URL || 'http://localhost:3000';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'protocols');
@@ -227,11 +228,12 @@ async function runScenario(folder, protocol, experiment, scenario, keep) {
       }
       if (step.input || step.concurrent) {
         // `concurrent` delivers every input at the same coordinator instant (batch API).
-        const items = step.concurrent || [step.input];
+        let items = step.concurrent || [step.input];
         let v = await view();
         const find = ({ node, method }) => (v.schemas[node] || []).find(s => s.label === method);
         for (let i = 0; items.some(it => !find(it)) && i < 60; i++) { await sleep(500); v = await view(); }
         for (const it of items) if (!find(it)) throw new Error(`${it.node} 没有声明 ${it.method}`);
+        items = items.map(it => ({ ...it, values: resolveValues(it.values || {}, v.states) }));
         let ids;
         if (step.concurrent) {
           const r = await api(path + '/commands', { batch: items.map(it => ({ node: it.node, action: find(it).action, values: it.values || {} })) });
@@ -240,8 +242,8 @@ async function runScenario(folder, protocol, experiment, scenario, keep) {
           ids = r.commands.map(c => c.id);
           console.log(`  ${stamp()} ⇉ 同时: ${items.map(it => `${it.node} ${it.method} ${JSON.stringify(it.values || {})}`).join(' | ')}`);
         } else {
-          const { node, method, values = {} } = step.input;
-          ids = [(await api(path + '/commands', { node, action: find(step.input).action, values })).id];
+          const { node, method, values } = items[0];
+          ids = [(await api(path + '/commands', { node, action: find(items[0]).action, values })).id];
           console.log(`  ${stamp()} → ${node} ${method} ${JSON.stringify(values)}`);
         }
         const waitOne = async ({ node, method }, id) => {

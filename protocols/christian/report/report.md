@@ -18,6 +18,39 @@ Instead of slowing the network, I made node-1 hold each request for 1000 ms befo
 
 ![](images/scenario-c.png)
 
+
+## server crash
+I crashed the server (node-1), and then try to sync from node-2.
+Obviously that fails.
+
+![alt text](image.png)
+
+```json
+{
+  "node": "node-2",
+  "state": {
+    "role": "client",
+    "clock": "08:00:05.427",
+    "clockMs": 1794470405427.7,
+    "errorMs": 777.427490234375,
+    "driftPPM": 1000,
+    "serverDelayMs": 0,
+    "served": 0,
+    "syncs": 0,
+    "failedSyncs": 1,
+    "busy": false,
+    "lastSync": null,
+    "lastError": "sync with node-1 failed, clock unchanged: context deadline exceeded"
+  },
+  "seq": 34,
+  "time": 30056.19490900007,
+  "timestamp": "2026-11-12T08:00:03.252Z",
+  "type": "state"
+}
+```
+
+
+
 ## design variant
 see experiment: Cristian design variant · +0 vs +RTT/2 vs +RTT (200 ms links)
 
