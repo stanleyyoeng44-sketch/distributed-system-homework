@@ -2,7 +2,7 @@
 
 ## normal execution: slide 37(observation scenario A)
 
-see experiment: Clocks normal: lecture six events. [Run log](../../../data/ba817d14-6c3f-43dc-9dfe-c56634508e98/events.jsonl).
+see experiment: Clocks normal: lecture six events. [Run log](normal-six-events.json).
 
 We created local events a and e, then sent a message from node-1 to node-2, producing b and c, and another from node-2 to node-3, producing d and f. The resulting order is a → b → c → d → f, with e → f, matching slide 37.
 
@@ -36,7 +36,7 @@ Observe that L(b)=2 is larger than L(e)=1, but b and e are concurrent. The compa
 
 ## concurrent events with equal Lamport values(observation scenario B)
 
-see experiment: Clocks: equal Lamport concurrent events. [Run log](../../../data/385f0267-407e-429c-b287-22d816661d65/events.jsonl).
+see experiment: Clocks: equal Lamport concurrent events. [Run log](equal-concurrent.json).
 
 We had each node generate one local event without sending messages. All three Lamport values are 1, but the vectors are different and every pair is concurrent. Our total-order timestamps are 3, 4, and 5, calculated as `3 * L + i`, where i is the node's position starting from zero; this order breaks ties but has no physical meaning.
 
@@ -44,9 +44,9 @@ We had each node generate one local event without sending messages. All three La
 
 ```json
 [
-  {"seq":17,"node":"node-1","result":{"timestamp":{"lamport":1,"vector":[1,0,0],"total":3}}},
-  {"seq":19,"node":"node-2","result":{"timestamp":{"lamport":1,"vector":[0,1,0],"total":4}}},
-  {"seq":21,"node":"node-3","result":{"timestamp":{"lamport":1,"vector":[0,0,1],"total":5}}},
+  {"seq":17,"node":"node-2","result":{"timestamp":{"lamport":1,"vector":[0,1,0],"total":4}}},
+  {"seq":19,"node":"node-3","result":{"timestamp":{"lamport":1,"vector":[0,0,1],"total":5}}},
+  {"seq":21,"node":"node-1","result":{"timestamp":{"lamport":1,"vector":[1,0,0],"total":3}}},
   {"seq":24,"result":{"vector":"concurrent","lamport":"equal","total":"a<b"}},
   {"seq":27,"result":{"vector":"concurrent","lamport":"equal","total":"a<b"}},
   {"seq":30,"result":{"vector":"concurrent","lamport":"equal","total":"a<b"}}
@@ -55,22 +55,22 @@ We had each node generate one local event without sending messages. All three La
 
 ## invariant after automatic events(observation scenario C)
 
-see experiment: Clocks: automatic random events. [Run log](../../../data/45607256-877d-4be9-a6db-eb001365e41e/events.jsonl).
+see experiment: Clocks: automatic random events. [Run log](auto-invariant.json).
 
-We ran `Auto(count=6)` on all three nodes and compared three pairs after they finished. In all three comparisons (#115, #118, #121), the vector reports happens-before and the Lamport order agrees. This matches the invariant: if one event happens before another, then its Lamport value is smaller.
+We ran `Auto(count=6)` on all three nodes and compared three pairs after they finished. In comparison #99 the vector reports concurrent; in #102 and #105 it reports happens-before, and the Lamport order agrees. This matches the invariant: if one event happens before another, then its Lamport value is smaller.
 
-**#113 selects one pair; #115 returns the comparison:**
+**#97 selects one pair; #99 returns the comparison:**
 
 ```json
 [
-  {"seq":113,"type":"command","values":{"left":{"lamport":1,"vector":[1,0,0]},"right":{"lamport":13,"vector":[8,7,6]}}},
-  {"seq":115,"type":"command_result","result":{"vector":"happens-before","lamport":"a<b","agrees":true}}
+  {"seq":97,"type":"command","values":{"left":{"lamport":1,"vector":[1,0,0],"total":3},"right":{"lamport":8,"vector":[0,7,3],"total":25}}},
+  {"seq":99,"type":"command_result","result":{"vector":"concurrent","lamport":"a<b","agrees":true}}
 ]
 ```
 
 ## clocks crash
 
-see experiment: Clocks crash: durable counters. [Run log](../../../data/f70e4009-7461-4748-84ab-35528e327d16/events.jsonl).
+see experiment: Clocks crash: durable counters. [Run log](crash-recovery.json).
 
 We recorded an event on node-2, then crashed it; a message sent to it was dropped. After recovery, node-2 restored Lamport 1 and vector [0,1,0], and its next local event advanced them to 2 and [0,2,0] rather than starting again. A new send then succeeded, showing that saving the counters lets the node continue without reusing its old event ID.
 
@@ -90,7 +90,7 @@ We recorded an event on node-2, then crashed it; a message sent to it was droppe
 
 ## clocks partition
 
-see experiment: Clocks partition: local events continue. [Run log](../../../data/8ee30528-0130-4854-a042-14fe56ce5adb/events.jsonl).
+see experiment: Clocks partition: local events continue. [Run log](partition.json).
 
 We blocked the connection between node-1 and node-3 in both directions. The direct message was dropped, but node-3 could still generate its own local event because this does not require communication. After restoring the link, we sent a new message, and node-3 merged its timestamp and advanced to Lamport 3 and vector [2,0,2].
 
@@ -109,7 +109,7 @@ We blocked the connection between node-1 and node-3 in both directions. The dire
 
 ## design variant: omit receive merge
 
-see experiment: Clocks variant: omit receive merge. [Run log](../../../data/b8c74c3f-9272-48e9-a8fa-b96d4da08a96/events.jsonl).
+see experiment: Clocks variant: omit receive merge. [Run log](variant-no-merge.json).
 
 We enabled `omitReceiveMerge` on node-2, then created a local event on node-1 and sent a message to node-2. The send b has Lamport 2, but its receive c has Lamport 1, violating b → c ⇒ L(b) < L(c); their matching `messageID` confirms that they belong to the same message. The vectors also incorrectly say concurrent, showing that the receive must include the sender's clock before incrementing its own.
 
